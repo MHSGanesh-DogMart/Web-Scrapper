@@ -1,0 +1,56 @@
+# Cloud config — used when CLOUD=1 environment variable is set.
+# Headless must be true on cloud servers (no display).
+# Note: Zepto and BigBasket may block headless Chromium on cloud IPs.
+platforms:
+  - dmart
+  - blinkit
+  - zepto
+  - bigbasket
+
+pincode: "500032"
+
+queries:
+  milk:
+    - "milk 1 litre"
+    - "toned milk"
+    - "full cream milk"
+    - "double toned milk"
+  curd:
+    - "curd 500g"
+    - "dahi 1kg"
+  paneer:
+    - "paneer 200g"
+  butter:
+    - "butter 500g"
+    - "amul butter"
+  ghee:
+    - "ghee 1l"
+    - "cow ghee"
+
+brands:
+  - Amul
+  - Heritage
+  - Nandini
+  - Dodla
+  - Mother Dairy
+  - Britannia
+  - Akshayakalpa
+  - Sid's Farm
+  - Country Delight
+  - Gowardhan
+  - Milky Mist
+  - Aavin
+  - Tirumala
+
+output:
+  snapshot_dir: data/snapshots
+  history_csv: data/history.csv
+
+profile_dir: data/profiles
+
+# Cloud: headless MUST be true (no screen available)
+headless: true
+slow_mo_ms: 0
+nav_timeout_ms: 60000
+
+debug: false

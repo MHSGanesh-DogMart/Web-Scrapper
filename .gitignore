@@ -13,5 +13,3 @@ storage.py.old
 zepto_scraper.py
 blinkit_scraper.py
 dmart_scraper.py
-scraper_base.py
-selector_monitor.py

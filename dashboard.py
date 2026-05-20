@@ -20,7 +20,12 @@ st.set_page_config(
     layout="wide",
 )
 
-CFG_PATH = Path(__file__).parent / "config.yaml"
+import os
+_cloud = os.environ.get("CLOUD", "").strip() == "1"
+_cfg_name = "config.cloud.yaml" if _cloud else "config.yaml"
+CFG_PATH = Path(__file__).parent / _cfg_name
+if not CFG_PATH.exists():
+    CFG_PATH = Path(__file__).parent / "config.yaml"
 with CFG_PATH.open("r", encoding="utf-8") as fh:
     config = yaml.safe_load(fh)
 
