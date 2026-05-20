@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+data/snapshots/
+data/history.csv
+data/history.csv.bak*
+data/debug/
+data/profiles/
+.playwright/
+.claude/
+storage.py.old
+zepto_scraper.py
+blinkit_scraper.py
+dmart_scraper.py
+scraper_base.py
+selector_monitor.py

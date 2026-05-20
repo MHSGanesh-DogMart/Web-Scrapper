@@ -1,0 +1,69 @@
+# Which platforms to scrape (each maps to a file in platforms/)
+platforms:
+  - dmart
+  - zepto
+  - blinkit
+  - bigbasket
+
+# Pincode decides which store/catalog each platform shows.
+# Use a pincode where Dodla competes — Hyderabad (500032) is a good default.
+pincode: "500032"
+
+# Search queries grouped by dairy category.
+queries:
+  milk:
+    - "milk 1 litre"
+    - "toned milk"
+    - "full cream milk"
+    - "double toned milk"
+  curd:
+    - "curd 500g"
+    - "dahi 1kg"
+  paneer:
+    - "paneer 200g"
+  butter:
+    - "butter 500g"
+    - "amul butter"
+  ghee:
+    - "ghee 1l"
+    - "cow ghee"
+
+# Brand whitelist — products are dropped unless their brand or product
+# name contains one of these (case-insensitive substring).
+brands:
+  - Amul
+  - Heritage
+  - Nandini
+  - Dodla
+  - Mother Dairy
+  - Britannia
+  - Akshayakalpa
+  - Sid's Farm
+  - Country Delight
+  - Gowardhan
+  - Milky Mist
+  - Aavin
+  - Tirumala
+
+# Output paths
+output:
+  snapshot_dir: data/snapshots
+  history_csv: data/history.csv
+
+# Persistent browser profile dir — cookies and saved locations live here.
+# Set the location ONCE via:  python run.py setup <platform>
+# After that, all scrape runs reuse the profile automatically.
+profile_dir: data/profiles
+
+# Browser
+# IMPORTANT: BigBasket and Zepto block headless Chromium with HTTP 403.
+# Run with headless: false to defeat the block. A browser window pops up
+# during the run; it scrapes itself, you don't need to click anything.
+headless: false
+slow_mo_ms: 0         # add e.g. 200 to slow each action down
+nav_timeout_ms: 45000
+
+# Debug mode dumps every captured JSON response into data/debug/<platform>/
+# so you can manually inspect what the platform returned. Highly recommended
+# on your first run to confirm accuracy.
+debug: true
