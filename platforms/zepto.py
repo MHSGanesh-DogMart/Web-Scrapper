@@ -232,12 +232,18 @@ def extract_dom(page: Page, category: str, query: str, brands: list[str], pincod
                     continue
 
                 block  = blocks[i] if i < len(blocks) else ""
-                prices = [float(m.replace(",","")) for m in re.findall(r"₹\s*([\d,]+)", block)]
-                prices = [p for p in prices if p > 5]   # drop ₹2-₹4 discount labels
-                sale   = min(prices) if prices else None
-                mrp    = max(prices) if prices else None
-                if sale == mrp:
-                    mrp = None
+                prices = sorted(
+                    [float(m.replace(",","")) for m in re.findall(r"₹\s*([\d,]+)", block)],
+                    reverse=True,
+                )
+                # Filter out tiny values (discount labels like "₹12 OFF" are
+                # always much smaller than the actual price).
+                if prices:
+                    threshold = prices[0] * 0.15   # must be at least 15% of MRP
+                    prices = [p for p in prices if p >= threshold]
+                top2 = prices[:2]
+                mrp  = top2[0] if top2 else None
+                sale = top2[1] if len(top2) > 1 else mrp
 
                 out.append(Product(
                     platform     = NAME,

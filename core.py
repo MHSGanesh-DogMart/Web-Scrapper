@@ -299,10 +299,10 @@ def run_platform(
                     hit += len(parsed)
                     products.extend(parsed)
 
-                # DOM extraction fallback: if the platform defines extract_dom,
-                # let it scrape products directly from the rendered page.
+                # DOM extraction fallback: only run if JSON captured nothing.
+                # Running both causes duplicates with mismatched sku_ids.
                 dom_hit = 0
-                if hasattr(platform, "extract_dom"):
+                if hit == 0 and hasattr(platform, "extract_dom"):
                     try:
                         dom_products = platform.extract_dom(
                             page, category, q, brands, pincode
