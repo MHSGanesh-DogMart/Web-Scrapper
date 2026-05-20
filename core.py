@@ -199,6 +199,31 @@ def run_platform(
 
     products: list[Product] = []
 
+    # Chrome flags required for cloud/Docker environments (low RAM, no /dev/shm).
+    # --disable-dev-shm-usage: use /tmp instead of the tiny 64MB /dev/shm in Docker.
+    # --no-sandbox: required when running as root inside a container.
+    # --disable-gpu / --disable-extensions: reduce memory footprint.
+    _CLOUD_ARGS = [
+        "--disable-dev-shm-usage",
+        "--no-sandbox",
+        "--disable-gpu",
+        "--disable-extensions",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--js-flags=--max-old-space-size=256",
+    ]
+    _COMMON_CTX = dict(
+        viewport={"width": 1280, "height": 800},
+        user_agent=(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0 Safari/537.36"
+        ),
+        locale="en-IN",
+        timezone_id="Asia/Kolkata",
+    )
+
     with sync_playwright() as pw:
         ctx: BrowserContext
         if profile_dir:
@@ -208,28 +233,17 @@ def run_platform(
                 user_data_dir=str(pdir),
                 headless=headless,
                 slow_mo=slow_mo_ms,
-                viewport={"width": 1366, "height": 900},
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0 Safari/537.36"
-                ),
-                locale="en-IN",
-                timezone_id="Asia/Kolkata",
+                args=_CLOUD_ARGS,
+                **_COMMON_CTX,
             )
             browser = None  # persistent context owns its own browser
         else:
-            browser = pw.chromium.launch(headless=headless, slow_mo=slow_mo_ms)
-            ctx = browser.new_context(
-                viewport={"width": 1366, "height": 900},
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0 Safari/537.36"
-                ),
-                locale="en-IN",
-                timezone_id="Asia/Kolkata",
+            browser = pw.chromium.launch(
+                headless=headless,
+                slow_mo=slow_mo_ms,
+                args=_CLOUD_ARGS,
             )
+            ctx = browser.new_context(**_COMMON_CTX)
         page: Page = ctx.pages[0] if ctx.pages else ctx.new_page()
 
         # Apply stealth patches to hide headless fingerprints (navigator.webdriver,
