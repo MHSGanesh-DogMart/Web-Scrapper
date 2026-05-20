@@ -20,6 +20,12 @@ from playwright.sync_api import (
     sync_playwright,
 )
 
+try:
+    from playwright_stealth import stealth_sync as _stealth_sync
+    _STEALTH_AVAILABLE = True
+except ImportError:
+    _STEALTH_AVAILABLE = False
+
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -225,6 +231,15 @@ def run_platform(
                 timezone_id="Asia/Kolkata",
             )
         page: Page = ctx.pages[0] if ctx.pages else ctx.new_page()
+
+        # Apply stealth patches to hide headless fingerprints (navigator.webdriver,
+        # plugins list, chrome object, etc.) — lets cloud servers scrape sites
+        # that block plain headless Chrome.
+        if _STEALTH_AVAILABLE:
+            try:
+                _stealth_sync(page)
+            except Exception:
+                pass
 
         recorder = ResponseRecorder(platform.is_product_response, debug_dir)
         page.on("response", recorder)
