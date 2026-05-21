@@ -20,6 +20,7 @@ import re
 import time
 from typing import Iterable
 from urllib.parse import quote_plus
+from urllib.parse import quote_plus
 
 from playwright.sync_api import Page, TimeoutError as PWTimeout
 
@@ -132,6 +133,12 @@ def extract_dom(page: Page, category: str, query: str, brands: list[str], pincod
 
     results = extract_cards(page, NAME, BASE_URL, category, query, brands, pincode)
 
+    # Blinkit is a React SPA with no <a href> on product cards, so auto_extract
+    # returns base_url for every product. Replace with a working search URL.
+    for p in results:
+        if not p.url or p.url == BASE_URL:
+            p.url = f"{BASE_URL}/s/?q={quote_plus(p.product_name)}"
+
     # Fallback: if auto-detect found nothing, use known Tailwind price selector
     if not results:
         price_sel = _find_price_sel(page)
@@ -180,8 +187,9 @@ def extract_dom(page: Page, category: str, query: str, brands: list[str], pincod
                 if sale == mrp:
                     mrp = None
 
-                slug     = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-                prod_url = f"{BASE_URL}/product/{slug}"
+                # Blinkit is a React SPA — product cards have no <a href>.
+                # Use a search URL so clicking opens the right product page.
+                prod_url = f"{BASE_URL}/s/?q={quote_plus(name)}"
                 out.append(Product(
                     platform=NAME,
                     category=_guess_category(name),

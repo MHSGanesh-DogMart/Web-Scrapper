@@ -140,8 +140,21 @@ def parse(body, url, category, query, brands, pincode) -> list[Product]:
         else:
             in_stock = None
 
-        href = d.get("urlSlug") or d.get("slug") or ""
-        prod_url = (BASE_URL + "/" + href.lstrip("/")) if href else BASE_URL
+        # Build a real product URL: zepto.com/pn/<slug>/pvid/<variant-uuid>
+        # Slug comes from the API if available, otherwise derived from product name.
+        slug = (
+            d.get("urlSlug") or d.get("slug") or
+            prod.get("urlSlug") or prod.get("slug") or
+            prod.get("urlKey") or ""
+        )
+        if not slug:
+            slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+        if sku:
+            prod_url = f"{BASE_URL}/pn/{slug.lstrip('/')}/pvid/{sku}"
+        elif slug:
+            prod_url = f"{BASE_URL}/{slug.lstrip('/')}"
+        else:
+            prod_url = BASE_URL
 
         out.append(Product(
             platform     = NAME,
