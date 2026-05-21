@@ -125,8 +125,9 @@ def parse(body, url, category, query, brands, pincode) -> list[Product]:
 # ── DOM extraction ────────────────────────────────────────────────────────────
 
 def extract_dom(page: Page, category: str, query: str, brands: list[str], pincode: str) -> list[Product]:
-    """Scroll to load all tiles then scrape product cards from HTML."""
-    # Scroll to lazy-load all tiles
+    """Scroll to load all tiles then auto-detect and scrape product cards."""
+    from auto_extract import extract_cards
+
     for _ in range(14):
         try:
             page.mouse.wheel(0, 3000)
@@ -134,72 +135,68 @@ def extract_dom(page: Page, category: str, query: str, brands: list[str], pincod
             pass
         time.sleep(0.45)
 
-    # Try current selector, then fallback
-    sel = None
-    for s in ("a[href*='/product/']", "a[href*='/p/']",
-              "[data-testid*='product'] a", "div[class*='product'] a"):
-        if page.locator(s).count() >= 3:
-            sel = s
-            break
+    results = extract_cards(page, NAME, BASE_URL, category, query, brands, pincode)
 
-    if not sel:
-        return []
+    # Fallback: if auto-detect found nothing, try the known anchor selector
+    if not results:
+        sel = None
+        for s in ("a[href*='/product/']", "a[href*='/p/']",
+                  "[data-testid*='product'] a", "div[class*='product'] a"):
+            if page.locator(s).count() >= 3:
+                sel = s
+                break
 
-    prod_links = page.locator(sel).all()
-    seen: set[str] = set()
-    out:  list[Product] = []
+        if not sel:
+            return []
 
-    for a in prod_links:
-        try:
-            href = a.get_attribute("href") or ""
-            if not href or href in seen:
+        prod_links = page.locator(sel).all()
+        seen: set[str] = set()
+
+        for a in prod_links:
+            try:
+                href = a.get_attribute("href") or ""
+                if not href or href in seen:
+                    continue
+                seen.add(href)
+
+                parent = a.locator("xpath=ancestor::div[2]")
+                text   = (parent.inner_text() or "").strip()
+                if not text:
+                    continue
+
+                lines = [l.strip() for l in text.splitlines() if l.strip()]
+                title = lines[0] if lines else ""
+                brand = match_brand(title, brands)
+                if not brand:
+                    continue
+
+                rupee_vals = sorted(
+                    [float(m.replace(",", "")) for m in re.findall(r"₹\s*([\d,]+(?:\.\d+)?)", text)],
+                    reverse=True,
+                )
+                top2 = rupee_vals[:2]
+                mrp  = top2[0] if top2 else None
+                sale = top2[1] if len(top2) > 1 else mrp
+                if sale == mrp:
+                    mrp = None
+
+                full_url = (BASE_URL + href) if href.startswith("/") else href
+                results.append(Product(
+                    platform=NAME,
+                    category=_guess_category(title),
+                    query=query,
+                    brand=brand,
+                    product_name=title,
+                    size=_extract_size(title),
+                    mrp=mrp,
+                    sale_price=sale,
+                    discount_pct=discount_pct(mrp, sale),
+                    in_stock=None,
+                    sku_id=href.split("selectedProd=")[-1] if "selectedProd=" in href else "",
+                    url=full_url,
+                    pincode=pincode,
+                ))
+            except Exception:
                 continue
-            seen.add(href)
 
-            parent = a.locator("xpath=ancestor::div[2]")
-            text   = (parent.inner_text() or "").strip()
-            if not text:
-                continue
-
-            lines  = [l.strip() for l in text.splitlines() if l.strip()]
-            title  = lines[0] if lines else ""
-            brand  = match_brand(title, brands)
-            if not brand:
-                continue
-
-            # DMart card format: "MRP  ₹<mrp>  DMart  ₹<sale>  ₹<discount> OFF"
-            # The discount label (smallest number) must be excluded.
-            # Strategy: take ALL ₹ values, sort descending, keep top 2.
-            import re as _re
-            rupee_vals = sorted(
-                [float(m.replace(",","")) for m in _re.findall(r"₹\s*([\d,]+(?:\.\d+)?)", text)],
-                reverse=True,
-            )
-            # Top 2: [mrp, sale_price]; discount label is smaller and gets dropped.
-            top2 = rupee_vals[:2]
-            mrp  = top2[0] if top2 else None
-            sale = top2[1] if len(top2) > 1 else mrp
-            if sale == mrp:
-                mrp = None
-
-            full_url = (BASE_URL + href) if href.startswith("/") else href
-
-            out.append(Product(
-                platform     = NAME,
-                category     = _guess_category(title),
-                query        = query,
-                brand        = brand,
-                product_name = title,
-                size         = _extract_size(title),
-                mrp          = mrp,
-                sale_price   = sale,
-                discount_pct = discount_pct(mrp, sale),
-                in_stock     = None,
-                sku_id       = href.split("selectedProd=")[-1] if "selectedProd=" in href else "",
-                url          = full_url,
-                pincode      = pincode,
-            ))
-        except Exception:
-            continue
-
-    return out
+    return results

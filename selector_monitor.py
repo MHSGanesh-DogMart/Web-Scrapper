@@ -1,6 +1,7 @@
 """
-Daily selector health monitor — run once a day to verify all platforms
-are still working. Set it up as a Windows Scheduled Task (see bottom of file).
+Daily selector health monitor — verifies all platforms are reachable
+and returning product data. Uses the auto_extract pattern detector, so
+it works even after a site redesigns its CSS.
 
 Usage:
     python selector_monitor.py          # run check now
@@ -17,29 +18,24 @@ from datetime import datetime
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
+import yaml
 
-import scraper_base
-import dmart_scraper
-import zepto_scraper
-import blinkit_scraper
+import auto_extract
 
 DATA_DIR   = Path(__file__).parent / "data"
-REPORT_CSV = DATA_DIR / "health_history.csv"
+HEALTH_FILE = DATA_DIR / "health.json"
+REPORT_CSV  = DATA_DIR / "health_history.csv"
 
-# Quick test config per platform — just enough to detect a selector break
+with (Path(__file__).parent / "config.yaml").open("r", encoding="utf-8") as _fh:
+    _cfg = yaml.safe_load(_fh)
+
+BRANDS = _cfg["brands"]
+
 CHECKS = {
-    "DMart": {
-        "url":        "https://www.dmart.in/category/dairy-aesc-dairy",
-        "strategies": dmart_scraper.SELECTOR_STRATEGIES,
-    },
-    "Zepto": {
-        "url":        "https://www.zepto.com/search?query=milk",
-        "strategies": zepto_scraper.SELECTOR_STRATEGIES,
-    },
-    "Blinkit": {
-        "url":        "https://blinkit.com/s/?q=milk",
-        "strategies": blinkit_scraper.SELECTOR_STRATEGIES,
-    },
+    "DMart":      "https://www.dmart.in/category/dairy-aesc-dairy",
+    "Zepto":      "https://www.zepto.com/search?query=milk",
+    "Blinkit":    "https://blinkit.com/s/?q=milk",
+    "BigBasket":  "https://www.bigbasket.com/ps/?q=milk",
 }
 
 
@@ -51,57 +47,63 @@ def run_checks() -> dict[str, dict]:
     print(f"Selector Health Check  —  {now}")
     print("=" * 60)
 
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
+    _CLOUD_ARGS = [
+        "--disable-dev-shm-usage",
+        "--no-sandbox",
+        "--disable-gpu",
+        "--disable-extensions",
+    ]
 
-        for platform, cfg in CHECKS.items():
-            print(f"\n[{platform}] checking {cfg['url']} …")
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=False, args=_CLOUD_ARGS)
+
+        for platform, url in CHECKS.items():
+            print(f"\n[{platform}] checking {url} …")
             ctx = browser.new_context(
-                viewport={"width": 1366, "height": 900},
+                viewport={"width": 1280, "height": 800},
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
                     "Chrome/124.0 Safari/537.36"
                 ),
+                locale="en-IN",
+                timezone_id="Asia/Kolkata",
             )
             page = ctx.new_page()
             status = "broken"
-            working_sel = None
-            count = 0
+            count  = 0
 
             try:
-                page.goto(cfg["url"], wait_until="domcontentloaded", timeout=40000)
+                page.goto(url, wait_until="domcontentloaded", timeout=40000)
                 time.sleep(3)
-                working_sel = scraper_base.detect_working_selector(
-                    page, platform, cfg["strategies"]
-                )
-                if working_sel:
-                    count = page.locator(working_sel).count()
+                for _ in range(4):
+                    page.mouse.wheel(0, 2000)
+                    time.sleep(0.4)
+                # Use auto_extract to count detected cards
+                raw = page.evaluate(auto_extract._JS_EXTRACT_CARDS) or []
+                count = len(raw)
+                if count >= 3:
                     status = "ok"
+                    print(f"  ✓  auto-detected {count} product cards")
+                else:
+                    print(f"  ✗ BROKEN  only {count} cards detected")
             except Exception as e:
                 print(f"  ERROR: {e}")
 
             ctx.close()
-
             results[platform] = {
                 "status":     status,
-                "selector":   working_sel,
+                "selector":   "auto_extract",
                 "count":      count,
+                "note":       "",
                 "checked_at": now,
             }
 
-            icon = "✓" if status == "ok" else "✗ BROKEN"
-            print(f"  {icon}  selector={working_sel!r}  count={count}")
-
         browser.close()
 
-    # Save health.json (for dashboard)
-    scraper_base.DATA_DIR.mkdir(parents=True, exist_ok=True)
-    scraper_base.HEALTH_FILE.write_text(
-        json.dumps(results, indent=2), encoding="utf-8"
-    )
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    HEALTH_FILE.write_text(json.dumps(results, indent=2), encoding="utf-8")
 
-    # Append to health_history.csv
     REPORT_CSV.parent.mkdir(parents=True, exist_ok=True)
     header = not REPORT_CSV.exists()
     with REPORT_CSV.open("a", encoding="utf-8", newline="") as f:
@@ -110,14 +112,13 @@ def run_checks() -> dict[str, dict]:
         for pf, r in results.items():
             f.write(
                 f"{r['checked_at']},{pf},{r['status']},"
-                f"\"{r['selector'] or ''}\",{r['count']}\n"
+                f"\"{r.get('selector','')}\",{r['count']}\n"
             )
 
     print("\n" + "=" * 60)
     broken = [p for p, r in results.items() if r["status"] != "ok"]
     if broken:
         print(f"ALERT: {len(broken)} platform(s) BROKEN: {', '.join(broken)}")
-        print("Open data/health.json for details.")
     else:
         print("All platforms OK.")
     print("=" * 60)
@@ -126,7 +127,6 @@ def run_checks() -> dict[str, dict]:
 
 
 def setup_windows_task() -> None:
-    """Register a Windows Task Scheduler job to run this script every day at 6 AM."""
     python_exe = sys.executable
     script     = Path(__file__).resolve()
     task_name  = "DairyPriceHealthCheck"
@@ -148,7 +148,6 @@ if __name__ == "__main__":
     parser.add_argument("--setup", action="store_true",
                         help="Register as a Windows daily scheduled task")
     args = parser.parse_args()
-
     if args.setup:
         setup_windows_task()
     else:

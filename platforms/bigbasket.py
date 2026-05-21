@@ -192,15 +192,9 @@ def _guess_category(title: str) -> str:
 
 
 def extract_dom(page, category: str, query: str, brands: list, pincode: str) -> list:
-    """DOM fallback for BigBasket — reads product cards from rendered HTML.
-    Works without authentication session.
-
-    BigBasket card selectors (observed 2025):
-        li[qa] or div[qa] contain product tiles on /ps/ search pages.
-        Each tile has: product name in <h5>, price in <span class*='offer-price'>,
-        MRP in <span class*='mrp'>.
-    """
+    """DOM fallback for BigBasket — auto-detects and reads product cards."""
     import time
+    from auto_extract import extract_cards
     from core import Product, discount_pct, match_brand, safe_float
 
     for _ in range(8):
@@ -210,89 +204,93 @@ def extract_dom(page, category: str, query: str, brands: list, pincode: str) -> 
             pass
         time.sleep(0.4)
 
-    # Find product containers
-    sel = None
-    for s in (
-        "li[qa]", "div[qa]",
-        "div[class*='SKUDeck']", "div[class*='product-sub']",
-        "div[class*='PriceBox']",
-        "[class*='product-card']",
-    ):
-        if page.locator(s).count() >= 2:
-            sel = s
-            break
+    results = extract_cards(page, NAME, BASE_URL, category, query, brands, pincode)
 
-    if not sel:
-        return []
+    # Fallback: if auto-detect found nothing, use known BigBasket card selectors
+    if not results:
+        sel = None
+        for s in (
+            "li[qa]", "div[qa]",
+            "div[class*='SKUDeck']", "div[class*='product-sub']",
+            "div[class*='PriceBox']",
+            "[class*='product-card']",
+        ):
+            if page.locator(s).count() >= 2:
+                sel = s
+                break
 
-    cards = page.locator(sel).all()
-    out:  list[Product] = []
-    seen: set[str]      = set()
+        if not sel:
+            return []
 
-    for card in cards:
-        try:
-            text = (card.inner_text() or "").strip()
-            if len(text) < 5:
-                continue
-            key = text[:50]
-            if key in seen:
-                continue
-            seen.add(key)
+        cards = page.locator(sel).all()
+        out:  list = []
+        seen: set[str] = set()
 
-            lines = [l.strip() for l in text.splitlines() if l.strip()]
-            name  = ""
-            prices: list[float] = []
-
-            for line in lines:
-                low = line.lower()
-                if any(s in low for s in ["add", "out of stock", "notify", "off", "save", "%"]):
-                    p = safe_float(line.replace("₹","").replace("Rs","").replace(",","").strip())
-                    if p and p > 0 and ("₹" in line or "Rs" in line):
-                        prices.append(p)
-                    continue
-                if "₹" in line or "Rs" in line:
-                    p = safe_float(line.replace("₹","").replace("Rs","").replace(",","").strip())
-                    if p and p > 0:
-                        prices.append(p)
-                elif not name and len(line) > 4 and not _re.match(r"^[\d.%₹]+$", line):
-                    name = line
-
-            if not name:
-                continue
-            brand = match_brand(name, brands)
-            if not brand:
-                continue
-
-            sale = min(prices) if prices else None
-            mrp  = max(prices) if prices else None
-            if sale == mrp:
-                mrp = None
-
-            size_m = _SIZE_RE.search(name)
-            size   = size_m.group(0).strip() if size_m else ""
-
+        for card in cards:
             try:
-                href = card.locator("a[href]").first.get_attribute("href") or ""
+                text = (card.inner_text() or "").strip()
+                if len(text) < 5:
+                    continue
+                key = text[:50]
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                lines = [l.strip() for l in text.splitlines() if l.strip()]
+                name  = ""
+                prices: list[float] = []
+
+                for line in lines:
+                    low = line.lower()
+                    if any(s in low for s in ["add", "out of stock", "notify", "off", "save", "%"]):
+                        p = safe_float(line.replace("₹","").replace("Rs","").replace(",","").strip())
+                        if p and p > 0 and ("₹" in line or "Rs" in line):
+                            prices.append(p)
+                        continue
+                    if "₹" in line or "Rs" in line:
+                        p = safe_float(line.replace("₹","").replace("Rs","").replace(",","").strip())
+                        if p and p > 0:
+                            prices.append(p)
+                    elif not name and len(line) > 4 and not _re.match(r"^[\d.%₹]+$", line):
+                        name = line
+
+                if not name:
+                    continue
+                brand = match_brand(name, brands)
+                if not brand:
+                    continue
+
+                sale = min(prices) if prices else None
+                mrp  = max(prices) if prices else None
+                if sale == mrp:
+                    mrp = None
+
+                size_m = _SIZE_RE.search(name)
+                size   = size_m.group(0).strip() if size_m else ""
+
+                try:
+                    href = card.locator("a[href]").first.get_attribute("href") or ""
+                except Exception:
+                    href = ""
+                prod_url = (BASE_URL + href) if href.startswith("/") else href or BASE_URL
+
+                out.append(Product(
+                    platform=NAME,
+                    category=_guess_category(name),
+                    query=query,
+                    brand=brand,
+                    product_name=name,
+                    size=size,
+                    mrp=mrp,
+                    sale_price=sale,
+                    discount_pct=discount_pct(mrp, sale),
+                    in_stock=None,
+                    sku_id=href.split("/")[-2] if "/" in href else "",
+                    url=prod_url,
+                    pincode=pincode,
+                ))
             except Exception:
-                href = ""
-            prod_url = (BASE_URL + href) if href.startswith("/") else href or BASE_URL
+                continue
+        results = out
 
-            out.append(Product(
-                platform     = NAME,
-                category     = _guess_category(name),
-                query        = query,
-                brand        = brand,
-                product_name = name,
-                size         = size,
-                mrp          = mrp,
-                sale_price   = sale,
-                discount_pct = discount_pct(mrp, sale),
-                in_stock     = None,
-                sku_id       = href.split("/")[-2] if "/" in href else "",
-                url          = prod_url,
-                pincode      = pincode,
-            ))
-        except Exception:
-            continue
-
-    return out
+    return results

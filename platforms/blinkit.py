@@ -121,7 +121,8 @@ def parse(body, url, category, query, brands, pincode) -> list[Product]:
 
 def extract_dom(page: Page, category: str, query: str, brands: list[str], pincode: str) -> list[Product]:
     """Scrape product cards from the rendered Blinkit page."""
-    # Scroll to load more products
+    from auto_extract import extract_cards
+
     for _ in range(7):
         try:
             page.mouse.wheel(0, 2500)
@@ -129,73 +130,75 @@ def extract_dom(page: Page, category: str, query: str, brands: list[str], pincod
             pass
         time.sleep(0.45)
 
-    price_sel = _find_price_sel(page)
-    if not price_sel:
-        return []
+    results = extract_cards(page, NAME, BASE_URL, category, query, brands, pincode)
 
-    card_lvl  = _find_card_level(page, price_sel)
-    price_divs = page.locator(price_sel).all()
+    # Fallback: if auto-detect found nothing, use known Tailwind price selector
+    if not results:
+        price_sel = _find_price_sel(page)
+        if not price_sel:
+            return []
 
-    out:  list[Product] = []
-    seen: set[str]      = set()
+        card_lvl   = _find_card_level(page, price_sel)
+        price_divs = page.locator(price_sel).all()
+        out:  list[Product] = []
+        seen: set[str]      = set()
 
-    for pd in price_divs:
-        try:
-            card = pd.locator(f"xpath=ancestor::div[{card_lvl}]")
-            text = (card.inner_text() or "").strip()
-            if len(text) < 5:
-                continue
-
-            dedup_key = text[:60]
-            if dedup_key in seen:
-                continue
-            seen.add(dedup_key)
-
-            lines = [l.strip() for l in text.splitlines() if l.strip()]
-            prices: list[float] = []
-            name   = ""
-
-            for line in lines:
-                low = line.lower()
-                if any(s in low for s in ["add", "out of stock", "notify", "off", "save"]):
+        for pd in price_divs:
+            try:
+                card = pd.locator(f"xpath=ancestor::div[{card_lvl}]")
+                text = (card.inner_text() or "").strip()
+                if len(text) < 5:
                     continue
-                if "₹" in line:
-                    p = safe_float(line.replace("₹", "").replace(",", "").strip())
-                    if p and p > 0:
-                        prices.append(p)
-                elif not name and len(line) > 3 and not re.match(r"^[\d.%]+$", line):
-                    name = line
+                dedup_key = text[:60]
+                if dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
 
-            if not name:
+                lines = [l.strip() for l in text.splitlines() if l.strip()]
+                prices: list[float] = []
+                name = ""
+
+                for line in lines:
+                    low = line.lower()
+                    if any(s in low for s in ["add", "out of stock", "notify", "off", "save"]):
+                        continue
+                    if "₹" in line:
+                        p = safe_float(line.replace("₹", "").replace(",", "").strip())
+                        if p and p > 0:
+                            prices.append(p)
+                    elif not name and len(line) > 3 and not re.match(r"^[\d.%]+$", line):
+                        name = line
+
+                if not name:
+                    continue
+                brand = match_brand(name, brands)
+                if not brand:
+                    continue
+
+                sale = min(prices) if prices else None
+                mrp  = max(prices) if prices else None
+                if sale == mrp:
+                    mrp = None
+
+                slug     = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+                prod_url = f"{BASE_URL}/product/{slug}"
+                out.append(Product(
+                    platform=NAME,
+                    category=_guess_category(name),
+                    query=query,
+                    brand=brand,
+                    product_name=name,
+                    size=_extract_size(name),
+                    mrp=mrp,
+                    sale_price=sale,
+                    discount_pct=discount_pct(mrp, sale),
+                    in_stock=None,
+                    sku_id=slug,
+                    url=prod_url,
+                    pincode=pincode,
+                ))
+            except Exception:
                 continue
-            brand = match_brand(name, brands)
-            if not brand:
-                continue
+        results = out
 
-            sale = min(prices) if prices else None
-            mrp  = max(prices) if prices else None
-            if sale == mrp:
-                mrp = None
-
-            slug     = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-            prod_url = f"{BASE_URL}/product/{slug}"
-
-            out.append(Product(
-                platform     = NAME,
-                category     = _guess_category(name),
-                query        = query,
-                brand        = brand,
-                product_name = name,
-                size         = _extract_size(name),
-                mrp          = mrp,
-                sale_price   = sale,
-                discount_pct = discount_pct(mrp, sale),
-                in_stock     = None,
-                sku_id       = slug,
-                url          = prod_url,
-                pincode      = pincode,
-            ))
-        except Exception:
-            continue
-
-    return out
+    return results

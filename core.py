@@ -276,12 +276,28 @@ def run_platform(
                 browser.close()
             return []
 
+        visited_urls: set[str] = set()   # skip if a platform reuses the same URL
+
         for category, queries in queries_by_category.items():
             for q in queries:
+                urls_for_query = list(platform.search_urls(q))
+                new_urls = [u for u in urls_for_query if u not in visited_urls]
+
+                # Platform uses a fixed URL (e.g. DMart category page) — already scraped.
+                if urls_for_query and not new_urls:
+                    print(
+                        f"  [{platform.NAME}] [{category}] {q!r} ... "
+                        f"skipped (same URL already scraped this run)",
+                        flush=True,
+                    )
+                    continue
+
                 print(f"  [{platform.NAME}] [{category}] {q!r} ...", flush=True)
                 recorder.drain()
                 count_before = len(products)
-                for url in platform.search_urls(q):
+
+                for url in new_urls:
+                    visited_urls.add(url)
                     try:
                         page.goto(url, wait_until="domcontentloaded", timeout=45000)
                     except PWTimeout:
@@ -295,6 +311,18 @@ def run_platform(
                         except Exception:
                             pass
                         time.sleep(0.5)
+
+                    # Save a screenshot when debug is on so you can see exactly
+                    # what the browser captured for this query.
+                    if debug_dir is not None:
+                        try:
+                            slug = q.replace(" ", "_")[:30]
+                            shot_path = debug_dir / f"screenshot_{slug}.png"
+                            page.screenshot(path=str(shot_path), full_page=False)
+                            print(f"    screenshot → {shot_path}", flush=True)
+                        except Exception:
+                            pass
+
                 # ALSO grab Next.js / Nuxt / Apollo initial state from the
                 # page itself — many SPAs (Zepto, BigBasket) render products
                 # into the HTML via SSR rather than a separate XHR call.
@@ -341,17 +369,32 @@ def run_platform(
                     except Exception as e:
                         if debug:
                             print(f"    dom extract error: {e}", flush=True)
+
+                new_this_query = products[count_before:]
                 print(
                     f"    captured {len(captured)} sources, +{hit} from JSON, "
-                    f"+{dom_hit} from DOM",
+                    f"+{dom_hit} from DOM  →  {len(new_this_query)} new products",
                     flush=True,
                 )
+
+                # Print a brief product list so you can verify the data looks right.
+                if new_this_query:
+                    for p in new_this_query[:8]:
+                        mrp_s  = f"MRP ₹{p.mrp:.0f}"  if p.mrp  else "MRP —"
+                        sale_s = f"Sale ₹{p.sale_price:.0f}" if p.sale_price else "—"
+                        print(
+                            f"      • {p.brand} | {p.product_name[:50]} | "
+                            f"{p.size or '—'} | {mrp_s} → {sale_s}",
+                            flush=True,
+                        )
+                    if len(new_this_query) > 8:
+                        print(f"      … and {len(new_this_query) - 8} more", flush=True)
+
                 # Live callback: hand the freshly-scraped products to the
                 # caller (dashboard appends them to history.csv immediately).
                 if on_query_done is not None:
-                    new = products[count_before:]
                     try:
-                        on_query_done(platform.NAME, category, q, new)
+                        on_query_done(platform.NAME, category, q, new_this_query)
                     except Exception as e:
                         if debug:
                             print(f"    on_query_done error: {e}", flush=True)

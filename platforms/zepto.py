@@ -175,92 +175,88 @@ def _build_size(variant: dict) -> str:
 # ── DOM fallback ──────────────────────────────────────────────────────────────
 
 def extract_dom(page: Page, category: str, query: str, brands: list[str], pincode: str) -> list[Product]:
-    """Fallback: read product tiles directly from the rendered HTML.
+    """Fallback: auto-detect and extract product tiles from the rendered Zepto page."""
+    from auto_extract import extract_cards
 
-    Zepto tile structure:
-        <a href="/pn/<slug>/pvid/<id>">
-            <img alt="<product name>">
-        </a>
-        following-sibling or ancestor-div[1] contains: ADD ₹sale [₹mrp ₹X OFF] Name Size
-    """
     time.sleep(1.5)
-    links = page.locator("a[href*='/pn/']").all()
-    if not links:
-        return []
+    results = extract_cards(page, NAME, BASE_URL, category, query, brands, pincode)
 
-    # Get all /pn/ links grouped by their parent container (row of 6)
-    containers: dict[str, tuple] = {}
-    for a in links:
-        try:
-            parent = a.locator("xpath=ancestor::div[1]")
-            key    = parent.get_attribute("class") or parent.inner_html()[:30]
-            if key not in containers:
-                containers[key] = (parent, [])
-            containers[key][1].append(a)
-        except Exception:
-            pass
+    # Fallback: if auto-detect found nothing, use known /pn/ anchor pattern
+    if not results:
+        links = page.locator("a[href*='/pn/']").all()
+        if not links:
+            return []
 
-    out:  list[Product] = []
-    seen: set[str]      = set()
-
-    for parent, anchors in containers.values():
-        try:
-            container_text = parent.inner_text() or ""
-        except Exception:
-            continue
-
-        blocks = re.split(r"\nADD\n", container_text)
-
-        for i, a in enumerate(anchors):
+        containers: dict[str, tuple] = {}
+        for a in links:
             try:
-                href = a.get_attribute("href") or ""
-                if href in seen:
-                    continue
-                seen.add(href)
+                parent = a.locator("xpath=ancestor::div[1]")
+                key    = parent.get_attribute("class") or parent.inner_html()[:30]
+                if key not in containers:
+                    containers[key] = (parent, [])
+                containers[key][1].append(a)
+            except Exception:
+                pass
 
-                img   = a.locator("img").first
-                name  = (img.get_attribute("alt") or "").strip() if img.count() > 0 else ""
-                if not name:
-                    slug = re.search(r"/pn/([^/]+)/", href)
-                    if slug:
-                        name = slug.group(1).replace("-", " ").title()
-                if not name:
-                    continue
+        out:  list[Product] = []
+        seen: set[str]      = set()
 
-                brand = match_brand(name, brands)
-                if not brand:
-                    continue
-
-                block  = blocks[i] if i < len(blocks) else ""
-                prices = sorted(
-                    [float(m.replace(",","")) for m in re.findall(r"₹\s*([\d,]+)", block)],
-                    reverse=True,
-                )
-                # Filter out tiny values (discount labels like "₹12 OFF" are
-                # always much smaller than the actual price).
-                if prices:
-                    threshold = prices[0] * 0.15   # must be at least 15% of MRP
-                    prices = [p for p in prices if p >= threshold]
-                top2 = prices[:2]
-                mrp  = top2[0] if top2 else None
-                sale = top2[1] if len(top2) > 1 else mrp
-
-                out.append(Product(
-                    platform     = NAME,
-                    category     = _guess_category(name),
-                    query        = query,
-                    brand        = brand,
-                    product_name = name,
-                    size         = _extract_size(name),
-                    mrp          = mrp,
-                    sale_price   = sale,
-                    discount_pct = discount_pct(mrp, sale),
-                    in_stock     = None,
-                    sku_id       = href.split("/")[-1] if href else "",
-                    url          = BASE_URL + href if href.startswith("/") else href,
-                    pincode      = pincode,
-                ))
+        for parent, anchors in containers.values():
+            try:
+                container_text = parent.inner_text() or ""
             except Exception:
                 continue
+            blocks = re.split(r"\nADD\n", container_text)
 
-    return out
+            for i, a in enumerate(anchors):
+                try:
+                    href = a.get_attribute("href") or ""
+                    if href in seen:
+                        continue
+                    seen.add(href)
+
+                    img  = a.locator("img").first
+                    name = (img.get_attribute("alt") or "").strip() if img.count() > 0 else ""
+                    if not name:
+                        slug = re.search(r"/pn/([^/]+)/", href)
+                        if slug:
+                            name = slug.group(1).replace("-", " ").title()
+                    if not name:
+                        continue
+
+                    brand = match_brand(name, brands)
+                    if not brand:
+                        continue
+
+                    block  = blocks[i] if i < len(blocks) else ""
+                    prices = sorted(
+                        [float(m.replace(",", "")) for m in re.findall(r"₹\s*([\d,]+)", block)],
+                        reverse=True,
+                    )
+                    if prices:
+                        threshold = prices[0] * 0.15
+                        prices = [p for p in prices if p >= threshold]
+                    top2 = prices[:2]
+                    mrp  = top2[0] if top2 else None
+                    sale = top2[1] if len(top2) > 1 else mrp
+
+                    out.append(Product(
+                        platform=NAME,
+                        category=_guess_category(name),
+                        query=query,
+                        brand=brand,
+                        product_name=name,
+                        size=_extract_size(name),
+                        mrp=mrp,
+                        sale_price=sale,
+                        discount_pct=discount_pct(mrp, sale),
+                        in_stock=None,
+                        sku_id=href.split("/")[-1] if href else "",
+                        url=BASE_URL + href if href.startswith("/") else href,
+                        pincode=pincode,
+                    ))
+                except Exception:
+                    continue
+        results = out
+
+    return results
