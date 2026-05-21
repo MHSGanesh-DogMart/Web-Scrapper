@@ -6,30 +6,10 @@ platforms:
   - bigbasket
 
 # Pincode decides which store/catalog each platform shows.
-# Use a pincode where Dodla competes — Hyderabad (500032) is a good default.
 pincode: "500032"
 
-# Search queries grouped by dairy category.
-queries:
-  milk:
-    - "milk 1 litre"
-    - "toned milk"
-    - "full cream milk"
-    - "double toned milk"
-  curd:
-    - "curd 500g"
-    - "dahi 1kg"
-  paneer:
-    - "paneer 200g"
-  butter:
-    - "butter 500g"
-    - "amul butter"
-  ghee:
-    - "ghee 1l"
-    - "cow ghee"
-
-# Brand whitelist — products are dropped unless their brand or product
-# name contains one of these (case-insensitive substring).
+# Brand whitelist — only products whose brand/name contains one of these
+# (case-insensitive) are kept. Add any new brand here.
 brands:
   - Amul
   - Heritage
@@ -44,26 +24,105 @@ brands:
   - Milky Mist
   - Aavin
   - Tirumala
+  - Jersey
+  - Parag
+
+# Search queries — one search per brand so ALL products of each brand
+# are captured, plus category searches to catch anything the brand search misses.
+queries:
+  # --- Brand searches (captures every product of each brand) ---
+  brand_amul:
+    - "Amul"
+  brand_heritage:
+    - "Heritage dairy"
+  brand_nandini:
+    - "Nandini"
+  brand_dodla:
+    - "Dodla"
+  brand_motherdairy:
+    - "Mother Dairy"
+  brand_britannia:
+    - "Britannia dairy"
+  brand_akshayakalpa:
+    - "Akshayakalpa"
+  brand_sidsfarm:
+    - "Sid's Farm"
+  brand_countrydelight:
+    - "Country Delight"
+  brand_gowardhan:
+    - "Gowardhan"
+  brand_milkymist:
+    - "Milky Mist"
+  brand_aavin:
+    - "Aavin"
+  brand_tirumala:
+    - "Tirumala"
+  brand_jersey:
+    - "Jersey milk"
+  brand_parag:
+    - "Parag milk"
+
+  # --- Category searches (catches products brand search might miss) ---
+  milk:
+    - "toned milk 1 litre"
+    - "full cream milk"
+    - "cow milk"
+    - "buffalo milk"
+    - "skimmed milk"
+    - "uht milk"
+  curd:
+    - "curd 400g"
+    - "curd 1kg"
+    - "dahi pouch"
+    - "greek yogurt"
+    - "probiotic curd"
+  paneer:
+    - "paneer 200g"
+    - "paneer 500g"
+    - "malai paneer"
+  butter:
+    - "butter 100g"
+    - "butter 500g"
+    - "unsalted butter"
+  ghee:
+    - "cow ghee 1l"
+    - "desi ghee 500ml"
+    - "buffalo ghee"
+  cheese:
+    - "cheese slices"
+    - "cheese cubes"
+    - "mozzarella cheese"
+    - "pizza cheese"
+  cream:
+    - "fresh cream"
+    - "whipping cream"
+    - "malai"
+  lassi:
+    - "lassi"
+    - "chaas buttermilk"
+    - "spiced buttermilk"
+  ice_cream:
+    - "ice cream"
+    - "kulfi"
+    - "frozen dessert"
+  flavoured_milk:
+    - "flavoured milk"
+    - "chocolate milk"
+    - "kesar milk"
+    - "badam milk"
 
 # Output paths
 output:
   snapshot_dir: data/snapshots
   history_csv: data/history.csv
 
-# Persistent browser profile dir — cookies and saved locations live here.
-# Set the location ONCE via:  python run.py setup <platform>
-# After that, all scrape runs reuse the profile automatically.
+# Persistent browser profile dir
 profile_dir: data/profiles
 
-# Browser
-# IMPORTANT: BigBasket and Zepto block headless Chromium with HTTP 403.
-# Run with headless: false to defeat the block. A browser window pops up
-# during the run; it scrapes itself, you don't need to click anything.
+# headless: false is required — Zepto/BigBasket block headless Chrome.
 headless: false
-slow_mo_ms: 0         # add e.g. 200 to slow each action down
+slow_mo_ms: 0
 nav_timeout_ms: 45000
 
-# Debug mode dumps every captured JSON response into data/debug/<platform>/
-# so you can manually inspect what the platform returned. Highly recommended
-# on your first run to confirm accuracy.
+# debug: true saves screenshots + raw JSON into data/debug/<platform>/
 debug: true

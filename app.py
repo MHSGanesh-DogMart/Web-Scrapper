@@ -131,19 +131,22 @@ with tab1:
     if latest.empty:
         st.info("No products match the current filters.")
     else:
-        cols = [c for c in ["platform","brand","category","product_name","size","mrp","sale_price","discount_pct"] if c in latest.columns]
+        cols = [c for c in ["platform","brand","category","product_name","size","mrp","sale_price","discount_pct","url"] if c in latest.columns]
         tbl  = latest[cols].sort_values(["platform","category","brand"]).reset_index(drop=True)
         tbl  = tbl.rename(columns={
             "platform":"Platform","brand":"Brand","category":"Category",
             "product_name":"Product","size":"Size",
             "mrp":"MRP (₹)","sale_price":"Sale Price (₹)","discount_pct":"Discount %",
+            "url":"Link",
         })
-        st.dataframe(tbl, use_container_width=True, hide_index=True,
-            column_config={
-                "MRP (₹)":        st.column_config.NumberColumn(format="₹%.2f"),
-                "Sale Price (₹)": st.column_config.NumberColumn(format="₹%.2f"),
-                "Discount %":     st.column_config.NumberColumn(format="%.1f%%"),
-            })
+        col_cfg = {
+            "MRP (₹)":        st.column_config.NumberColumn(format="₹%.2f"),
+            "Sale Price (₹)": st.column_config.NumberColumn(format="₹%.2f"),
+            "Discount %":     st.column_config.NumberColumn(format="%.1f%%"),
+        }
+        if "Link" in tbl.columns:
+            col_cfg["Link"] = st.column_config.LinkColumn("Link", display_text="Open ↗")
+        st.dataframe(tbl, use_container_width=True, hide_index=True, column_config=col_cfg)
         st.download_button("⬇ Download CSV",
             data=tbl.to_csv(index=False).encode("utf-8"),
             file_name="dairy_prices.csv", mime="text/csv")
