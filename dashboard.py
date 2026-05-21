@@ -36,7 +36,7 @@ ALL_PLATFORMS = config.get("platforms", ["dmart", "bigbasket", "zepto"])
 
 
 # ── Robust loader ─────────────────────────────────────────────────────────────
-@st.cache_data(ttl=15)
+@st.cache_data(ttl=0)
 def load_history() -> pd.DataFrame:
     """Read history.csv defensively — strip whitespace from column names,
     parse dates manually so a missing column doesn't crash the dashboard."""
@@ -83,6 +83,9 @@ with st.sidebar:
     }
 
     run_btn = st.button("▶ Run Scraper Now", type="primary", use_container_width=True)
+    if st.button("🔄 Refresh Data", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
 
     st.markdown("---")
     st.subheader("Filters")
@@ -234,9 +237,10 @@ if run_btn:
                 "`python run.py setup <platform>` once in a terminal, "
                 "set the address in the popup, and try again."
             )
-        time.sleep(1)
         st.cache_data.clear()
-        st.rerun()
+        st.success("✅ Scrape complete! Click below to load the dashboard.")
+        if st.button("📊 View Results Now", type="primary", use_container_width=True):
+            st.rerun()
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 df = load_history()
