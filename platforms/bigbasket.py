@@ -115,7 +115,7 @@ def parse(body, url, category, query, brands, pincode) -> list[Product]:
         if not _looks_like_product(d):
             continue
         name = str(_first(d, _NAME_KEYS) or "").strip()
-        if not name:
+        if not name or len(name) < 8 or len(name.split()) < 2:
             continue
         brand_field = str(_first(d, _BRAND_KEYS) or "").strip()
         brand = match_brand(brand_field, brands) or match_brand(name, brands)
@@ -262,8 +262,6 @@ def extract_dom(page, category: str, query: str, brands: list, pincode: str) -> 
 
                 sale = min(prices) if prices else None
                 mrp  = max(prices) if prices else None
-                if sale == mrp:
-                    mrp = None
 
                 size_m = _SIZE_RE.search(name)
                 size   = size_m.group(0).strip() if size_m else ""

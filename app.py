@@ -147,9 +147,14 @@ with tab1:
         if "Link" in tbl.columns:
             col_cfg["Link"] = st.column_config.LinkColumn("Link", display_text="Open ↗")
         st.dataframe(tbl, use_container_width=True, hide_index=True, column_config=col_cfg)
-        st.download_button("⬇ Download CSV",
-            data=tbl.to_csv(index=False).encode("utf-8"),
-            file_name="dairy_prices.csv", mime="text/csv")
+        _buf = io.BytesIO()
+        tbl.to_excel(_buf, index=False, engine="openpyxl")
+        st.download_button(
+            "⬇ Download Excel",
+            data=_buf.getvalue(),
+            file_name="dairy_prices.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
 with tab2:
     st.subheader("Sale Price by Product")

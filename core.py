@@ -48,6 +48,14 @@ class Product:
     pincode: str
     scraped_at: str = field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
 
+    def __post_init__(self):
+        # Sanity: a sale price below ₹1 with a meaningful MRP is a parse error.
+        # Use MRP as the sale price to avoid storing garbage data.
+        if (self.sale_price is not None and self.sale_price < 1.0
+                and self.mrp is not None and self.mrp > 5):
+            self.sale_price = self.mrp
+            self.discount_pct = 0.0
+
     def as_row(self) -> dict:
         d = asdict(self)
         return d

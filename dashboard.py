@@ -6,6 +6,7 @@ drives core.run_platform across the platforms you tick on the sidebar.
 from __future__ import annotations
 
 import importlib
+import io
 import time
 from pathlib import Path
 
@@ -405,11 +406,13 @@ with tab1:
             hide_index=True,
             column_config=col_cfg,
         )
+        _buf = io.BytesIO()
+        tbl.to_excel(_buf, index=False, engine="openpyxl")
         st.download_button(
-            "⬇ Download CSV",
-            data=tbl.to_csv(index=False).encode("utf-8"),
-            file_name="dairy_prices.csv",
-            mime="text/csv",
+            "⬇ Download Excel",
+            data=_buf.getvalue(),
+            file_name="dairy_prices.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
 with tab2:

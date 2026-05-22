@@ -20,7 +20,6 @@ import re
 import time
 from typing import Iterable
 from urllib.parse import quote_plus
-from urllib.parse import quote_plus
 
 from playwright.sync_api import Page, TimeoutError as PWTimeout
 
@@ -184,8 +183,6 @@ def extract_dom(page: Page, category: str, query: str, brands: list[str], pincod
 
                 sale = min(prices) if prices else None
                 mrp  = max(prices) if prices else None
-                if sale == mrp:
-                    mrp = None
 
                 # Blinkit is a React SPA — product cards have no <a href>.
                 # Use a search URL so clicking opens the right product page.
@@ -201,7 +198,7 @@ def extract_dom(page: Page, category: str, query: str, brands: list[str], pincod
                     sale_price=sale,
                     discount_pct=discount_pct(mrp, sale),
                     in_stock=None,
-                    sku_id=slug,
+                    sku_id="",
                     url=prod_url,
                     pincode=pincode,
                 ))
